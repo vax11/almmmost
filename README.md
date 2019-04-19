@@ -57,7 +57,7 @@ You'll next need to generate disk images. CP/M expects empty disks to
 contain all e5 (hex) bytes, so I've included a program, "make\_e5.c", which
 generates a stream of e5 bytes. For an 8MB image, do:
 ```
-./make\_e5 | dd of=drive\_a.img bs=1M count=8
+./make_e5 | dd of=drive_a.img bs=1M count=8
 ```
 
 For floppy disk images, you can use Imagedisk images converted to raw images
@@ -139,7 +139,7 @@ directory that they're stored in, along with the maximum private directory numbe
 ```
 This gives the disk type, image file names/rw status, and parameters for CP/M:
 ```
-Type : either PRIVATE, PUBLIC, or PUBLIC\_ONLY, matching MmmOST's definitions.
+Type : either PRIVATE, PUBLIC, or PUBLIC_ONLY, matching MmmOST's definitions.
 Image n : one Image is used per private directory on a disk. 0 is used for
 	public/public only disks
 Floppy : Y or N depending on if it's emulating a floppy disk that can be changed
