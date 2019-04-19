@@ -1,0 +1,193 @@
+; GFXTEST1 - Z80 CP/M program to test writing to graphics screen memory
+; on a TS-803/TPC-I computer
+;
+; For use with Almmmost. Almmmost is a modern replacement for the TeleVideo 
+; MmmOST network operating system used on the TeleVideo TS-8xx Zilog 
+; Z80-based computers from the early 1980s.
+;
+; Copyright (C) 2019 Patrick Finnegan <pat@vax11.net>
+;
+; This program is free software: you can redistribute it and/or modify
+; it under the terms of the GNU General Public License as published by
+; the Free Software Foundation, either version 3 of the License, or
+; (at your option) any later version.
+;
+; This program is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU General Public License for more details.
+;
+; You should have received a copy of the GNU General Public License
+; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+BDOS:	EQU 5
+SETDMA:	EQU 26
+INCH:	EQU 1
+OUTCH:	EQU 2
+PRINT:	EQU 9
+GETCON:	EQU 10
+OPEN:	EQU 15
+MAKE:	EQU 22
+DELETE:	EQU 19
+READ:	EQU 20
+WRITE:	EQU 21
+CLOSE:	EQU 16
+EXIT:	EQU 0
+CR:	EQU 0Dh
+LF:	EQU 0Ah
+EOF:	EQU 1Ah
+GRFX:	EQU 28h
+
+SAFERAM:  EQU 0C000h
+BDOSBOT:  EQU 0CB80h
+STACKTOP: EQU 0C200h
+DMADDR:   EQU 0CA80h
+GFXRAM:   EQU 04000h
+GFXRAMB1: EQU 06000h
+GFXRAMB2: EQU 08000h
+GFXRAMB3: EQU 0A000h
+
+GFXPORT: EQU 0C4h
+GFX_EN:	 EQU 5
+GFX_DIS: EQU 0
+
+MEMPORT:      EQU 13h
+MEM_VIDBANK:  EQU 0
+MEM_NORMBANK: EQU 1
+
+
+	ORG 100h
+
+START:
+	LD SP, STACKTOP			; Set user stack address
+	
+	LD C, 1				; Init graphics video mode
+	RST GRFX
+	;LD C, 2
+	;RST GRFX
+	;LD C, 11
+	;LD HL, 1
+	;RST GRFX
+	;LD C, 12
+	;LD HL, 1
+	;RST GRFX
+	;LD C, 14
+	;LD HL, 1
+	;RST GRFX
+	;LD C, 4
+	;LD HL, 0
+	;LD DE, 0
+	;RST GRFX
+	;LD C, 5
+	;LD HL, 639
+	;LD DE, 239
+	;RST GRFX
+
+; Move graphics routine into top of RAM
+	LD DE, SAFERAM
+	LD HL, GFX_ROUTINE
+	LD BC, 200h
+	LDIR
+
+; Call graphics routine
+	CALL SAFERAM
+
+; Wait for a keystroke
+	LD C, INCH
+	CALL BDOS
+
+; Finished
+DONE:
+
+	LD C, 0				; Return to text mode
+	RST GRFX
+
+	LD C, PRINT
+	LD DE, MSG_END
+	CALL BDOS
+
+	JP EXIT	
+
+
+; Graphics routine, to be placed at C000h
+GFX_ROUTINE:
+	
+	LD A, MEM_VIDBANK
+	OUT (MEMPORT), A
+
+	LD HL, GFXRAM			; First bank
+
+	LD B,30
+	LD DE, 80-2
+
+DISPLOOP1:
+	LD A, 080h			; Display 10000000
+	LD (HL), A
+	INC HL
+	LD A, 018h			; Display 00011000
+	LD (HL), A
+	INC HL
+	LD A, 011h			; Display 00000001
+	LD (HL), A
+	ADD HL, DE
+	DJNZ DISPLOOP1
+
+	LD HL, GFXRAMB1			; Bank 2, scanline %4 = 1
+	LD B, 30
+
+DISPLOOP2:
+	LD A, 040h			; 01000000
+	LD (HL), A
+	INC HL
+	LD A, 024h
+	LD (HL), A
+	INC HL
+	LD A, 022h
+	LD (HL), A
+	ADD HL, DE
+	DJNZ DISPLOOP2
+
+	LD HL, GFXRAMB2
+	LD B, 30
+
+DISPLOOP3:
+	LD A, 020h
+	LD (HL),A
+	INC HL
+	LD A, 042h
+	LD (HL),A
+	INC HL
+	LD A, 044h
+	LD (HL), A
+	ADD HL, DE
+	DJNZ DISPLOOP3
+
+	LD HL, GFXRAMB3
+	LD B, 30
+
+DISPLOOP4:
+	LD A, 010h
+	LD (HL), A
+	INC HL
+	LD A, 024h
+	LD (HL), A
+	INC HL
+	LD A, 088h
+	LD (HL), A
+	ADD HL, DE
+	DJNZ DISPLOOP4
+
+	LD A, MEM_NORMBANK
+	OUT (MEMPORT), A
+	RET
+
+
+GFX_ROUTINE_END:
+
+
+; Messages follow
+
+MSG_END:
+	defm "GFXTEST1 program complete."
+	defb CR, LF, 24h
+

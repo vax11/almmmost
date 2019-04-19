@@ -1,0 +1,125 @@
+0000                1 ; Z80 CP/M program to copy a file to the b:fileout.sys special file
+0000                2 
+0000                3 BDOS:	EQU 5
+0000                4 SETDMA:	EQU 26
+0000                5 PRINT:	EQU 9
+0000                6 OPEN:	EQU 15
+0000                7 READ:	EQU 20
+0000                8 WRITE:	EQU 21
+0000                9 CLOSE:	EQU 16
+0000               10 EXIT:	EQU 0
+0000               11 FCBIN:	EQU 05Ch
+0000               12 
+0000               13 	ORG 100h
+0100               14 
+0100               15 START:
+0100 0e 1a         16 	LD C, SETDMA			; Set read/write buffer address
+0102 11 69 02      17 	LD DE, DMADDR
+0105 cd 05 00      18 	CALL BDOS
+0108               19 
+0108 0e 09         20 	LD C, PRINT
+010a 11 a9 01      21 	LD DE, WELCOME
+010d cd 05 00      22 	CALL BDOS
+0110               23 
+0110 0e 0f         24 	LD C, OPEN			; Open file supplied on command line
+0112 11 5c 00      25 	LD DE, FCBIN
+0115 cd 05 00      26 	CALL BDOS
+0118               27 
+0118 3c            28 	INC A
+0119 ca 6f 01      29 	JP Z,ERRINP			; If A=FF, error opening input file
+011c               30 
+011c 0e 0f         31 	LD C, OPEN			; Open compiled-in name output file
+011e 11 85 01      32 	LD DE, FCBFOSYS
+0121 cd 05 00      33 	CALL BDOS
+0124               34 
+0124 3c            35 	INC A				; If A=FF, error opening output file
+0125 ca 7a 01      36 	JP Z,ERROUTP
+0128               37 
+0128               38 COPYLOOP:				; Loop to copy until EOF
+0128 0e 14         39 	LD C, READ			; read one (128-byte) record
+012a 11 5c 00      40 	LD DE, FCBIN
+012d cd 05 00      41 	CALL BDOS
+0130               42 
+0130 b7            43 	OR A				; If error, assume EOF
+0131 c2 4f 01      44 	JP NZ, DONE
+0134               45 
+0134 0e 15         46 	LD C, WRITE			; Write one record
+0136 11 85 01      47 	LD DE, FCBFOSYS
+0139 cd 05 00      48 	CALL BDOS
+013c               49 
+013c b7            50 	OR A				; If no error, repeat
+013d 28 e9         51 	JR Z, COPYLOOP
+013f               52 
+013f               53 ERRWRT:					; if write error, display
+013f c6 30         54 	ADD A,30h
+0141 32 65 02      55 	LD (BADWRT1), A
+0144 0e 09         56 	LD C, PRINT
+0146 11 56 02      57 	LD DE, BADWRT
+0149 cd 05 00      58 	CALL BDOS
+014c c3 00 00      59 	JP EXIT
+014f               60 	
+014f               61 DONE:					; if here, probably got EOF, so stop
+014f c6 30         62 	ADD A,30h
+0151 32 52 02      63 	LD (EOFREAD1), A
+0154 0e 09         64 	LD C, PRINT
+0156 11 45 02      65 	LD DE, EOFREAD
+0159 cd 05 00      66 	CALL BDOS
+015c               67 
+015c 0e 10         68 	LD C, CLOSE			; close files
+015e 11 5c 00      69 	LD DE, FCBIN
+0161 cd 05 00      70 	CALL BDOS
+0164               71 
+0164 0e 10         72 	LD C, CLOSE
+0166 11 85 01      73 	LD DE, FCBFOSYS
+0169 cd 05 00      74 	CALL BDOS
+016c               75 
+016c c3 00 00      76 	JP EXIT	
+016f               77 
+016f               78 ERRINP:					; print error message for opening input file
+016f 0e 09         79 	LD C, PRINT
+0171 11 c9 01      80 	LD DE, BADIN
+0174 cd 05 00      81 	CALL BDOS
+0177 c3 00 00      82 	JP EXIT 
+017a               83 
+017a               84 ERROUTP:				; print error message for opening output file
+017a 0e 09         85 	LD C, PRINT
+017c 11 26 02      86 	LD DE, BADOUT
+017f cd 05 00      87 	CALL BDOS
+0182 c3 00 00      88 	JP EXIT
+0185               89 
+0185               90 
+0185               91 	
+0185               92 
+0185               93 FCBFOSYS:				; 36 byte FCB for B:FILEOUT.SYS
+0185 02            94 	defb 2 
+0186 46 49 4c 45   95 	defm "FILEOUT SYS"
+0191 00 00 00 00   96 	defb 0, 0, 0, 0
+0195               97 	defs 20
+01a9               98 
+01a9               99 WELCOME:
+01a9 5a 2f 38 30  100 	defm "Z/80 simple file copy program"
+01c6 0d 0a 24     101 	defb 0dh, 0ah, 24h
+01c9              102 
+01c9              103 BADIN:
+01c9 45 72 72 6f  104 	defm "Error opening input file. Usage: FILEOUT [input file]."
+01ff 0d 0a        105 	defb 0dh, 0ah
+0201 43 6f 70 69  106 	defm "Copies input file to B:FILEOUT.SYS"
+0223 0d 0a 24     107 	defb 0dh, 0ah, 24h
+0226              108 
+0226              109 BADOUT:
+0226 43 6f 75 6c  110 	defm "Could not open B:FILEOUT.SYS"
+0242 0d 0a 24     111 	defb 0dh, 0ah, 24h
+0245              112 
+0245              113 EOFREAD:
+0245 45 6e 64 20  114 	defm "End of file: "
+0252              115 EOFREAD1:
+0252 30 0d 0a 24  116 	defb '0' ,0dh, 0ah, 24h
+0256              117 
+0256              118 BADWRT:
+0256 45 72 72 6f  119 	defm "Error writing: " 
+0265              120 BADWRT1:
+0265 30 0d 0a 24  121 	defb '0', 0dh, 0ah, 24h
+0269              122 
+0269              123 DMADDR:					; DMA read/write buffer
+0269              124 	defs 80h
+341 bytes code generated and 24 labels defined

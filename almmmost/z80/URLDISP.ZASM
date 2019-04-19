@@ -1,0 +1,246 @@
+; URLDISP - Z80 CP/M program to wget a URL to the screen
+;   Handle line endings but don't paginate
+;
+; For use with Almmmost. Almmmost is a modern replacement for the TeleVideo 
+; MmmOST network operating system used on the TeleVideo TS-8xx Zilog 
+; Z80-based computers from the early 1980s.
+;
+; Copyright (C) 2019 Patrick Finnegan <pat@vax11.net>
+;
+; This program is free software: you can redistribute it and/or modify
+; it under the terms of the GNU General Public License as published by
+; the Free Software Foundation, either version 3 of the License, or
+; (at your option) any later version.
+;
+; This program is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU General Public License for more details.
+;
+; You should have received a copy of the GNU General Public License
+; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+BDOS:	EQU 5
+SETDMA:	EQU 26
+OUTCH:	EQU 2
+PRINT:	EQU 9
+GETCON:	EQU 10
+OPEN:	EQU 15
+MAKE:	EQU 22
+DELETE:	EQU 19
+READ:	EQU 20
+WRITE:	EQU 21
+CLOSE:	EQU 16
+EXIT:	EQU 0
+CR:	EQU 0Dh
+LF:	EQU 0Ah
+EOF:	EQU 1Ah
+
+	ORG 100h
+
+START:
+	LD SP, STACKTOP			; Set user stack address
+	
+	LD C, SETDMA			; Set read/write buffer address
+	LD DE, DMADDR
+	CALL BDOS
+
+	LD C, PRINT			; Print welcome message
+	LD DE, MSG_WELCOME
+	CALL BDOS
+
+	LD C, OPEN			; Open compiled-in name output file
+	LD DE, FCBURL
+	CALL BDOS
+
+	INC A				; If A=FF, error opening output file
+	JP Z,ERRURLO
+
+; Get URL from user
+	LD C, PRINT			; Prompt for URL
+	LD DE, MSG_URLPROMPT
+	CALL BDOS
+
+	LD C, GETCON
+	LD DE, CBUFMX
+	CALL BDOS
+
+	LD C, OUTCH			; Need a linefeed after the prompt
+	LD E, LF
+	CALL BDOS 
+
+	LD HL, CBUFFER			; Terminate buffer with EOF
+	LD B, 0
+	LD A, (CBUFSZ)
+	LD C, A
+	ADD HL, BC
+	LD (HL), EOF
+
+; Send URL
+	LD C, WRITE			; Write the URL to the host
+	LD DE, FCBURL
+	CALL BDOS
+
+	OR A				; Exit if error
+	JP NZ, ERRURLW
+
+	LD A, (CBUFSZ)
+	CP 128
+	JR C, SKIPREC2
+
+	LD C, SETDMA			; Move DMA address to send 2nd half of buffer
+	LD DE, CBUFFER2
+	CALL BDOS
+
+	LD C, WRITE
+	LD DE, FCBURL
+	CALL BDOS
+
+	OR A
+	JP NZ, ERRURLW
+
+SKIPREC2:
+	XOR A
+	LD (FCBURL+32), A		; Clear record number
+
+	LD C, SETDMA			; Reset DMA address
+	LD DE, DMADDR
+	CALL BDOS
+
+; Copy from URL file to User
+
+COPYLOOP:				; Loop to copy until EOF
+	LD C, READ			; read one (128-byte) record
+	LD DE, FCBURL
+	CALL BDOS
+
+	OR A				; If error, assume EOF
+	JP NZ, DONE
+
+
+; Loop through 128 characters, turn bare LF to CR/LF, end program at ^Z
+
+	LD A, 128
+	LD (CHARCOUNT), A		; this many chars
+	LD HL, DMADDR			; Buffer to write
+OUTLOOP:
+	LD A, (HL)			; Load a character
+	LD (DISPLAYPTR), HL
+	CP LF
+	JR NZ, NOADDCR
+	
+	LD A, (LASTCHAR)		; Load last char from last record
+	CP CR
+	JR Z, PRTLF
+
+	LD C, OUTCH			; If not, print one first
+	LD E, CR
+	CALL BDOS
+
+PRTLF:
+	LD A, LF			; restore LF
+NOADDCR:
+	CP EOF				; if EOF, exit
+	JR Z, DONE
+
+	LD (LASTCHAR), A		; Save character for next loop
+	LD C, OUTCH
+	LD E, A
+	CALL BDOS			; Print character
+	LD HL, (DISPLAYPTR)
+	INC HL
+	LD A, (CHARCOUNT)
+	DEC A
+	LD (CHARCOUNT), A
+	JR NZ,OUTLOOP			; Loop until done with buffer
+	
+;
+	JR COPYLOOP
+
+; Finished
+DONE:					; if here, probably got EOF, so stop
+	ADD A,30h
+	LD (MSG_EOFREAD1), A
+	LD C, PRINT
+	LD DE, MSG_EOFREAD
+	CALL BDOS
+
+	LD C, CLOSE			; Close URL
+	LD DE, FCBURL
+	CALL BDOS
+
+	JP EXIT	
+
+; print error message for opening URL file
+ERRURLO:				
+	LD C, PRINT
+	LD DE, MSG_BADURLO
+	CALL BDOS
+	JP EXIT
+
+; print error message for writing URL to file
+ERRURLW:
+	LD C, PRINT			
+	LD DE, MSG_BADURLW
+	CALL BDOS
+	JP EXIT
+	
+
+; 36 byte FCB for B:FILEOUT.SYS
+FCBURL:					
+	defb 2 
+	defm "URLGET  SYS"
+	defb 0, 0, 0, 0
+	defs 20
+
+; Messages follow
+
+MSG_WELCOME:
+	defm "CP/M curl program"
+	defb CR, LF, 24h
+
+MSG_BADURLO:
+	defm "Could not open B:URLGET.SYS"
+	defb CR, LF, 24h
+
+MSG_BADURLW:
+	defm "Could not write URL"
+	defb CR, LF, 24h
+
+MSG_EOFREAD:
+	defb CR, LF
+	defm "End of file: "
+MSG_EOFREAD1:
+	defb '0' , CR, LF, 24h
+
+MSG_URLPROMPT:
+	defm "Enter URL: $"
+
+; Temp space to store last character
+
+LASTCHAR:
+	defb 0
+CHARCOUNT:
+	defb 0
+DISPLAYPTR:
+	defw 0
+
+; CP/M input buffer for URL
+
+CBUFMX:
+	defb 255
+CBUFSZ:
+	defb 0
+
+; text part of input buffer & DMA buffer for reading/writing
+
+CBUFFER:				; Console bufer 
+DMADDR:					; ( == ) DMA read/write buffer
+	;defs 128
+CBUFFER2: EQU CBUFFER+128
+	;defs 128
+
+; User stack, lots of space
+STACKBOT: EQU CBUFFER2+128
+	;defs 128
+STACKTOP: EQU STACKBOT+128

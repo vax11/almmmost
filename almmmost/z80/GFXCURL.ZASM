@@ -1,0 +1,309 @@
+; GFXCURL - Z80 CP/M program to wget a URL to the screen - graphics mode - v2
+;
+; For use with Almmmost. Almmmost is a modern replacement for the TeleVideo 
+; MmmOST network operating system used on the TeleVideo TS-8xx Zilog 
+; Z80-based computers from the early 1980s.
+;
+; Copyright (C) 2019 Patrick Finnegan <pat@vax11.net>
+;
+; This program is free software: you can redistribute it and/or modify
+; it under the terms of the GNU General Public License as published by
+; the Free Software Foundation, either version 3 of the License, or
+; (at your option) any later version.
+;
+; This program is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU General Public License for more details.
+;
+; You should have received a copy of the GNU General Public License
+; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+BDOS:	EQU 5
+SETDMA:	EQU 26
+INCH:	EQU 1
+OUTCH:	EQU 2
+PRINT:	EQU 9
+GETCON:	EQU 10
+OPEN:	EQU 15
+MAKE:	EQU 22
+DELETE:	EQU 19
+READ:	EQU 20
+WRITE:	EQU 21
+CLOSE:	EQU 16
+EXIT:	EQU 0
+
+GRFX:	EQU 28h
+
+CR:	EQU 0Dh
+LF:	EQU 0Ah
+EOF:	EQU 1Ah
+
+SAFERAM:  EQU 0C000h
+BDOSBOT:  EQU 0CB80h
+STACKTOP: EQU 0CB00h
+
+DMADDR:   EQU 0C100h
+IMGOFFSET: EQU DMADDR-6		; Offset to start writing
+GFXOFFSET: EQU DMADDR-4		; Multiplied RAM offset for line number
+GFXRAM:   EQU 04000h
+GFXRAMB0: EQU GFXRAM
+GFXRAMB1: EQU GFXRAM+02000h
+GFXRAMB2: EQU GFXRAM+04000h
+GFXRAMB3: EQU GFXRAM+06000h
+RECSIZE: EQU 80h
+RECCHUNK: EQU 18
+CHUNK1SZ: EQU RECSIZE*RECCHUNK
+CHUNK2SZ: EQU RECSIZE*RECCHUNK-40h
+GFXLINEBYTES: EQU 80			; 80 bytes per line * 8 = 640 px
+GFXINTERLACE: EQU 4			; Interlace every 4 lines
+GFXLINESPERFIELD: EQU 60		; 60 fields * 4 = 240 lines
+
+GFXPORT: EQU 0C4h
+GFX_EN:	 EQU 5
+GFX_DIS: EQU 0
+
+MEMPORT:      EQU 13h
+MEM_VIDBANK:  EQU 0
+MEM_NORMBANK: EQU 1
+
+
+	ORG 100h
+
+START:
+	LD SP, STACKTOP			; Set user stack address
+	
+	LD C, PRINT			; Print welcome message
+	LD DE, MSG_WELCOME
+	CALL BDOS
+
+	LD C, OPEN			; Open compiled-in name output file
+	LD DE, FCBURL
+	CALL BDOS
+
+	INC A				; If A=FF, error opening output file
+	JP Z,ERRURLO
+
+; Get URL from user
+	LD C, PRINT			; Prompt for URL
+	LD DE, MSG_URLPROMPT
+	CALL BDOS
+
+	LD C, GETCON
+	LD DE, CBUFMX
+	CALL BDOS
+
+	LD C, OUTCH			; Need a linefeed after the prompt
+	LD E, LF
+	CALL BDOS 
+
+	LD HL, CBUFFER			; Terminate buffer with EOF
+	LD B, 0
+	LD A, (CBUFSZ)
+	LD C, A
+	ADD HL, BC
+	LD (HL), EOF
+
+; Send URL
+	LD C, SETDMA			; Move DMA address buffer
+	LD DE, CBUFFER
+	CALL BDOS
+
+	LD C, WRITE			; Write the URL to the host
+	LD DE, FCBURL
+	CALL BDOS
+
+	OR A				; Exit if error
+	JP NZ, ERRURLW
+
+	LD A, (CBUFSZ)
+	CP 128
+	JR C, SKIPREC2
+
+	LD C, SETDMA			; Move DMA address to send 2nd half of buffer
+	LD DE, CBUFFER2
+	CALL BDOS
+
+	LD C, WRITE
+	LD DE, FCBURL
+	CALL BDOS
+
+	OR A
+	JP NZ, ERRURLW
+
+SKIPREC2:
+	XOR A
+	LD (FCBURL+32), A		; Clear record number
+
+; Init things
+	LD C,1				; Set graphics mode
+	RST GRFX
+
+	LD C,2				; Clear graphics screen
+	RST GRFX
+
+
+; Copy graphics routine to high ram
+
+	LD HL, GFX_DISP
+	LD DE, SAFERAM
+	LD BC, GFX_DISP_SIZE
+	LDIR
+
+; Copy from URL file to User
+
+; Copy field A part 1-38
+	LD DE, DMADDR
+	LD C, SETDMA
+	CALL BDOS
+
+	LD C, 0				; Offset for current field
+
+COPYFIELD:
+	LD B, 38
+COPYREC:
+	PUSH BC
+	LD C, READ
+	LD DE, FCBURL
+	CALL BDOS
+
+	POP BC
+	
+	OR A				; If error, assume EOF
+	JP NZ, DONE
+
+	PUSH BC
+
+	CALL SAFERAM			; Write to screen from DMADDR to C*128+GFXRAM - if B == 1, write 1/2 size
+
+	POP BC
+
+	INC C
+	DJNZ COPYREC
+
+	LD A, 26			; Offset to skip at the end of each field
+	ADD A, C
+	LD C, A
+
+	JR NZ,COPYFIELD
+
+; Finished
+DONE:					; if here, probably got EOF, so stop
+
+	LD C, INCH
+	CALL BDOS
+
+	LD C, 0				; Reset to text mode
+	RST GRFX
+
+	LD C, PRINT
+	LD DE, MSG_EOFREAD
+	CALL BDOS
+
+	LD C, CLOSE			; Close URL
+	LD DE, FCBURL
+	CALL BDOS
+
+	JP EXIT	
+
+; print error message for opening URL file
+ERRURLO:				
+	LD C, PRINT
+	LD DE, MSG_BADURLO
+	CALL BDOS
+	JP EXIT
+
+; print error message for writing URL to file
+ERRURLW:
+	LD C, PRINT			
+	LD DE, MSG_BADURLW
+	CALL BDOS
+	JP EXIT
+
+
+; Graphics routine, will be reloaced to SAFERAM, do PIC
+	; Write to screen from DMADDR to C*128+GFXRAM - if B == 1, write 1/2 record
+
+GFX_DISP:
+
+	LD A, MEM_VIDBANK		; Set to Video memory bank
+	OUT (MEMPORT), A
+
+	LD HL, GFXRAM
+	LD D, C				; DE = C*256
+	LD E, 0
+	SRL D				; DE /= 2
+	RR E
+	ADD HL,DE
+	EX DE,HL			; DE = HL
+
+
+	DEC B				; Test if (B-1) == 0 to chose write size
+	LD BC, 80h			; Full record size
+	JR NZ, FULLREC
+	LD BC, 40h			; Half record size
+
+FULLREC:
+	LD HL, DMADDR			; Copy from DMAREC (HL) to GFXRAM+C*(80h) for BC bytes
+	LDIR
+
+	LD A, MEM_NORMBANK		; Reset to normal memory bank and return
+	OUT (MEMPORT), A
+	RET
+
+GFX_DISP_END:
+
+GFX_DISP_SIZE: EQU GFX_DISP_END-GFX_DISP
+
+; 36 byte FCB for B:GFXCURL.SYS
+FCBURL:					
+	defb 2 
+	defm "URLGET  SYS"
+	defb 0, 0, 0, 0
+	defs 20
+
+; Messages follow
+
+MSG_WELCOME:
+	defm "CP/M graphics curl program"
+	defb CR, LF, 24h
+
+MSG_BADURLO:
+	defm "Could not open B:GFXCURL.SYS"
+	defb CR, LF, 24h
+
+MSG_BADURLW:
+	defm "Could not write URL"
+	defb CR, LF, 24h
+
+MSG_EOFREAD:
+	defb CR, LF
+	defm "End of file. "
+	defb CR, LF, 24h
+
+MSG_URLPROMPT:
+	defm "Enter URL: $"
+
+; Temp space to store last character
+
+LASTCHAR:
+	defb 0
+CHARCOUNT:
+	defb 0
+DISPLAYPTR:
+	defw 0
+
+; CP/M input buffer for URL
+
+CBUFMX:
+	defb 255
+CBUFSZ:
+	defb 0
+
+; text part of input buffer & DMA buffer for reading/writing
+
+CBUFFER:				; Console bufer 
+	;defs 128
+CBUFFER2: EQU CBUFFER2+128
+	;defs 128

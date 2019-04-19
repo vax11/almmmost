@@ -1,0 +1,143 @@
+; FILEOUT - Z80 CP/M program to copy a file to the b:fileout.sys special file
+;
+; For use with Almmmost. Almmmost is a modern replacement for the TeleVideo 
+; MmmOST network operating system used on the TeleVideo TS-8xx Zilog 
+; Z80-based computers from the early 1980s.
+;
+; Copyright (C) 2019 Patrick Finnegan <pat@vax11.net>
+;
+; This program is free software: you can redistribute it and/or modify
+; it under the terms of the GNU General Public License as published by
+; the Free Software Foundation, either version 3 of the License, or
+; (at your option) any later version.
+;
+; This program is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU General Public License for more details.
+;
+; You should have received a copy of the GNU General Public License
+; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+BDOS:	EQU 5
+SETDMA:	EQU 26
+PRINT:	EQU 9
+OPEN:	EQU 15
+READ:	EQU 20
+WRITE:	EQU 21
+CLOSE:	EQU 16
+EXIT:	EQU 0
+FCBIN:	EQU 05Ch
+
+	ORG 100h
+
+START:
+	LD C, SETDMA			; Set read/write buffer address
+	LD DE, DMADDR
+	CALL BDOS
+
+	LD C, PRINT
+	LD DE, WELCOME
+	CALL BDOS
+
+	LD C, OPEN			; Open file supplied on command line
+	LD DE, FCBIN
+	CALL BDOS
+
+	INC A
+	JP Z,ERRINP			; If A=FF, error opening input file
+
+	LD C, OPEN			; Open compiled-in name output file
+	LD DE, FCBFOSYS
+	CALL BDOS
+
+	INC A				; If A=FF, error opening output file
+	JP Z,ERROUTP
+
+COPYLOOP:				; Loop to copy until EOF
+	LD C, READ			; read one (128-byte) record
+	LD DE, FCBIN
+	CALL BDOS
+
+	OR A				; If error, assume EOF
+	JP NZ, DONE
+
+	LD C, WRITE			; Write one record
+	LD DE, FCBFOSYS
+	CALL BDOS
+
+	OR A				; If no error, repeat
+	JR Z, COPYLOOP
+
+ERRWRT:					; if write error, display
+	ADD A,30h
+	LD (BADWRT1), A
+	LD C, PRINT
+	LD DE, BADWRT
+	CALL BDOS
+	JP EXIT
+	
+DONE:					; if here, probably got EOF, so stop
+	ADD A,30h
+	LD (EOFREAD1), A
+	LD C, PRINT
+	LD DE, EOFREAD
+	CALL BDOS
+
+	LD C, CLOSE			; close files
+	LD DE, FCBIN
+	CALL BDOS
+
+	LD C, CLOSE
+	LD DE, FCBFOSYS
+	CALL BDOS
+
+	JP EXIT	
+
+ERRINP:					; print error message for opening input file
+	LD C, PRINT
+	LD DE, BADIN
+	CALL BDOS
+	JP EXIT 
+
+ERROUTP:				; print error message for opening output file
+	LD C, PRINT
+	LD DE, BADOUT
+	CALL BDOS
+	JP EXIT
+
+
+	
+
+WELCOME:
+	defm "Z/80 simple file copy program"
+	defb 0dh, 0ah, 24h
+
+BADIN:
+	defm "Error opening input file. Usage: FILEOUT [input file]."
+	defb 0dh, 0ah
+	defm "Copies input file to B:FILEOUT.SYS"
+	defb 0dh, 0ah, 24h
+
+BADOUT:
+	defm "Could not open B:FILEOUT.SYS"
+	defb 0dh, 0ah, 24h
+
+EOFREAD:
+	defm "End of file: "
+EOFREAD1:
+	defb '0' ,0dh, 0ah, 24h
+
+BADWRT:
+	defm "Error writing: " 
+BADWRT1:
+	defb '0', 0dh, 0ah, 24h
+
+FCBFOSYS:				; 36 byte FCB for B:FILEOUT.SYS
+	defb 2 
+	defm "FILEOUT SYS"
+	defb 0, 0, 0, 0
+	;defs 20
+
+DMADDR:	EQU FCBFOSYS+36			; DMA read/write buffer
+	;defs 80h

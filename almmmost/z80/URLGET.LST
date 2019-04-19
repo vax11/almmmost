@@ -1,0 +1,171 @@
+0000                1 ; Z80 CP/M program to wget a URL to a file
+0000                2 
+0000                3 BDOS:	EQU 5
+0000                4 SETDMA:	EQU 26
+0000                5 PRINT:	EQU 9
+0000                6 GETCON:	EQU 10
+0000                7 OPEN:	EQU 15
+0000                8 MAKE:	EQU 22
+0000                9 DELETE:	EQU 19
+0000               10 READ:	EQU 20
+0000               11 WRITE:	EQU 21
+0000               12 CLOSE:	EQU 16
+0000               13 EXIT:	EQU 0
+0000               14 FCBOUT:	EQU 05Ch
+0000               15 
+0000               16 	ORG 100h
+0100               17 
+0100               18 START:
+0100 0e 1a         19 	LD C, SETDMA			; Set read/write buffer address
+0102 11 9b 02      20 	LD DE, DMADDR
+0105 cd 05 00      21 	CALL BDOS
+0108               22 
+0108 0e 09         23 	LD C, PRINT
+010a 11 e7 01      24 	LD DE, WELCOME
+010d cd 05 00      25 	CALL BDOS
+0110               26 
+0110 0e 13         27 	LD C, DELETE			; Delete/Make to create file on commmandline
+0112 11 5c 00      28 	LD DE, FCBOUT
+0115 cd 05 00      29 	CALL BDOS
+0118               30 
+0118 0e 16         31 	LD C, MAKE
+011a 11 5c 00      32 	LD DE, FCBOUT
+011d cd 05 00      33 	CALL BDOS
+0120               34 
+0120 3c            35 	INC A
+0121 ca a2 01      36 	JP Z,ERROUTP			; If A=FF, error opening commandline file
+0124               37 
+0124 0e 0f         38 	LD C, OPEN			; Open compiled-in name output file
+0126 11 c3 01      39 	LD DE, FCBURL
+0129 cd 05 00      40 	CALL BDOS
+012c               41 
+012c 3c            42 	INC A				; If A=FF, error opening output file
+012d ca a2 01      43 	JP Z,ERROUTP
+0130               44 
+0130 0e 09         45 	LD C, PRINT
+0132 11 8d 02      46 	LD DE, URLPRMT
+0135 cd 05 00      47 	CALL BDOS
+0138               48 
+0138 0e 0a         49 	LD C, GETCON
+013a 11 99 02      50 	LD DE, CBUFMX
+013d cd 05 00      51 	CALL BDOS
+0140               52 
+0140 21 9b 02      53 	LD HL, CBUFFER			; Terminate buffer with EOF
+0143 06 00         54 	LD B, 0
+0145 3a 9a 02      55 	LD A, (CBUFSZ)
+0148 4f            56 	LD C, A
+0149 09            57 	ADD HL, BC
+014a 36 1a         58 	LD (HL), 1Ah
+014c               59 
+014c 0e 15         60 	LD C, WRITE
+014e 11 c3 01      61 	LD DE, FCBURL
+0151 cd 05 00      62 	CALL BDOS
+0154               63 
+0154 b7            64 	OR A
+0155 c2 b8 01      65 	JP NZ, ERRURLW
+0158               66 
+0158 32 e3 01      67 	LD (FCBURL+32), A		; Clear record number
+015b               68 
+015b               69 COPYLOOP:				; Loop to copy until EOF
+015b 0e 14         70 	LD C, READ			; read one (128-byte) record
+015d 11 c3 01      71 	LD DE, FCBURL
+0160 cd 05 00      72 	CALL BDOS
+0163               73 
+0163 b7            74 	OR A				; If error, assume EOF
+0164 c2 82 01      75 	JP NZ, DONE
+0167               76 
+0167 0e 15         77 	LD C, WRITE			; Write one record
+0169 11 5c 00      78 	LD DE, FCBOUT
+016c cd 05 00      79 	CALL BDOS
+016f               80 
+016f b7            81 	OR A				; If no error, repeat
+0170 28 e9         82 	JR Z, COPYLOOP
+0172               83 
+0172               84 ERRWRT:					; if write error, display
+0172 c6 30         85 	ADD A,30h
+0174 32 89 02      86 	LD (BADWRT1), A
+0177 0e 09         87 	LD C, PRINT
+0179 11 7a 02      88 	LD DE, BADWRT
+017c cd 05 00      89 	CALL BDOS
+017f c3 00 00      90 	JP EXIT
+0182               91 	
+0182               92 DONE:					; if here, probably got EOF, so stop
+0182 c6 30         93 	ADD A,30h
+0184 32 76 02      94 	LD (EOFREAD1), A
+0187 0e 09         95 	LD C, PRINT
+0189 11 69 02      96 	LD DE, EOFREAD
+018c cd 05 00      97 	CALL BDOS
+018f               98 
+018f 0e 10         99 	LD C, CLOSE			; close files
+0191 11 5c 00     100 	LD DE, FCBOUT
+0194 cd 05 00     101 	CALL BDOS
+0197              102 
+0197 0e 10        103 	LD C, CLOSE
+0199 11 c3 01     104 	LD DE, FCBURL
+019c cd 05 00     105 	CALL BDOS
+019f              106 
+019f c3 00 00     107 	JP EXIT	
+01a2              108 
+01a2              109 ERROUTP:				; print error message for opening input file
+01a2 0e 09        110 	LD C, PRINT
+01a4 11 fb 01     111 	LD DE, BADOUT
+01a7 cd 05 00     112 	CALL BDOS
+01aa c3 00 00     113 	JP EXIT 
+01ad              114 
+01ad              115 ERRURLP:				; print error message for opening output file
+01ad 0e 09        116 	LD C, PRINT
+01af 11 35 02     117 	LD DE, BADURL
+01b2 cd 05 00     118 	CALL BDOS
+01b5 c3 00 00     119 	JP EXIT
+01b8              120 
+01b8              121 ERRURLW:
+01b8 0e 09        122 	LD C, PRINT
+01ba 11 53 02     123 	LD DE, BADURLW
+01bd cd 05 00     124 	CALL BDOS
+01c0 c3 00 00     125 	JP EXIT
+01c3              126 	
+01c3              127 
+01c3              128 FCBURL:					; 36 byte FCB for B:FILEOUT.SYS
+01c3 02           129 	defb 2 
+01c4 55 52 4c 47  130 	defm "URLGET  SYS"
+01cf 00 00 00 00  131 	defb 0, 0, 0, 0
+01d3              132 	defs 20
+01e7              133 
+01e7              134 WELCOME:
+01e7 43 50 2f 4d  135 	defm "CP/M wget program"
+01f8 0d 0a 24     136 	defb 0dh, 0ah, 24h
+01fb              137 
+01fb              138 BADOUT:
+01fb 45 72 72 6f  139 	defm "Error opening output file. Usage: URLGET [output file]."
+0232 0d 0a 24     140 	defb 0dh, 0ah, 24h
+0235              141 
+0235              142 BADURL:
+0235 43 6f 75 6c  143 	defm "Could not open B:URLGET.SYS"
+0250 0d 0a 24     144 	defb 0dh, 0ah, 24h
+0253              145 
+0253              146 BADURLW:
+0253 43 6f 75 6c  147 	defm "Could not write URL"
+0266 0d 0a 24     148 	defb 0dh, 0ah, 24h
+0269              149 
+0269              150 EOFREAD:
+0269 45 6e 64 20  151 	defm "End of file: "
+0276              152 EOFREAD1:
+0276 30 0d 0a 24  153 	defb '0' ,0dh, 0ah, 24h
+027a              154 
+027a              155 BADWRT:
+027a 45 72 72 6f  156 	defm "Error writing: " 
+0289              157 BADWRT1:
+0289 30 0d 0a 24  158 	defb '0', 0dh, 0ah, 24h
+028d              159 
+028d              160 
+028d              161 URLPRMT:
+028d 45 6e 74 65  162 	defm "Enter URL: $"
+0299              163 
+0299              164 CBUFMX:
+0299 7f           165 	defb 127
+029a              166 CBUFSZ:
+029a 00           167 	defb 0
+029b              168 CBUFFER:				; Console bufer 
+029b              169 DMADDR:					; ( == ) DMA read/write buffer
+029b              170 	defs 128
+391 bytes code generated and 33 labels defined

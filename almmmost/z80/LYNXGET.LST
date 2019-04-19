@@ -1,0 +1,302 @@
+0000                1 ; Z80 CP/M program to use lynxget.sys to display a web page on the screen
+0000                2 
+0000                3 BDOS:	EQU 5
+0000                4 SETDMA:	EQU 26
+0000                5 INCH:	EQU 1
+0000                6 OUTCH:	EQU 2
+0000                7 PRINT:	EQU 9
+0000                8 GETCON:	EQU 10
+0000                9 OPEN:	EQU 15
+0000               10 MAKE:	EQU 22
+0000               11 DELETE:	EQU 19
+0000               12 READ:	EQU 20
+0000               13 WRITE:	EQU 21
+0000               14 CLOSE:	EQU 16
+0000               15 EXIT:	EQU 0
+0000               16 CR:	EQU 0Dh
+0000               17 LF:	EQU 0Ah
+0000               18 EOF:	EQU 1Ah
+0000               19 ESC:	EQU 1Bh
+0000               20 MAXLINE: EQU 23
+0000               21 MAXCHAR: EQU 81
+0000               22 
+0000               23 	ORG 100h
+0100               24 
+0100               25 START:
+0100 31 73 04      26 	LD SP, STACKTOP			; Set user stack address
+0103               27 	
+0103 0e 1a         28 	LD C, SETDMA			; Set read/write buffer address
+0105 11 f3 02      29 	LD DE, DMADDR
+0108 cd 05 00      30 	CALL BDOS
+010b               31 
+010b 0e 09         32 	LD C, PRINT			; Print welcome message
+010d 11 6b 02      33 	LD DE, MSG_WELCOME
+0110 cd 05 00      34 	CALL BDOS
+0113               35 
+0113 0e 0f         36 	LD C, OPEN			; Open compiled-in name output file
+0115 11 47 02      37 	LD DE, FCBURL
+0118 cd 05 00      38 	CALL BDOS
+011b               39 
+011b 3c            40 	INC A				; If A=FF, error opening output file
+011c ca 31 02      41 	JP Z,ERRURLO
+011f               42 
+011f               43 ; Get URL from user
+011f 0e 09         44 	LD C, PRINT			; Prompt for URL
+0121 11 c7 02      45 	LD DE, MSG_URLPROMPT
+0124 cd 05 00      46 	CALL BDOS
+0127               47 
+0127 0e 0a         48 	LD C, GETCON
+0129 11 f1 02      49 	LD DE, CBUFMX
+012c cd 05 00      50 	CALL BDOS
+012f               51 
+012f 0e 02         52 	LD C, OUTCH			; Need a linefeed after the prompt
+0131 1e 0a         53 	LD E, LF
+0133 cd 05 00      54 	CALL BDOS 
+0136               55 
+0136 21 f3 02      56 	LD HL, CBUFFER			; Terminate buffer with EOF
+0139 06 00         57 	LD B, 0
+013b 3a f2 02      58 	LD A, (CBUFSZ)
+013e 4f            59 	LD C, A
+013f 09            60 	ADD HL, BC
+0140 36 1a         61 	LD (HL), EOF
+0142               62 
+0142               63 ; Send URL
+0142 0e 15         64 	LD C, WRITE			; Write the URL to the host
+0144 11 47 02      65 	LD DE, FCBURL
+0147 cd 05 00      66 	CALL BDOS
+014a               67 
+014a b7            68 	OR A				; Exit if error
+014b c2 3c 02      69 	JP NZ, ERRURLW
+014e               70 
+014e 3a f2 02      71 	LD A, (CBUFSZ)
+0151 fe 80         72 	CP 128
+0153 38 14         73 	JR C, SKIPREC2
+0155               74 
+0155 0e 1a         75 	LD C, SETDMA			; Move DMA address to send 2nd half of buffer
+0157 11 73 03      76 	LD DE, CBUFFER2
+015a cd 05 00      77 	CALL BDOS
+015d               78 
+015d 0e 15         79 	LD C, WRITE
+015f 11 47 02      80 	LD DE, FCBURL
+0162 cd 05 00      81 	CALL BDOS
+0165               82 
+0165 b7            83 	OR A
+0166 c2 3c 02      84 	JP NZ, ERRURLW
+0169               85 
+0169               86 SKIPREC2:
+0169 af            87 	XOR A
+016a 32 67 02      88 	LD (FCBURL+32), A		; Clear record number
+016d               89 
+016d 0e 1a         90 	LD C, SETDMA			; Reset DMA address
+016f 11 f3 02      91 	LD DE, DMADDR
+0172 cd 05 00      92 	CALL BDOS
+0175               93 
+0175               94 ; Copy from URL file to User
+0175               95 
+0175               96 COPYLOOP:				; Loop to copy until EOF
+0175 0e 14         97 	LD C, READ			; read one (128-byte) record
+0177 11 47 02      98 	LD DE, FCBURL
+017a cd 05 00      99 	CALL BDOS
+017d              100 
+017d b7           101 	OR A				; If error, assume EOF
+017e c2 e5 01     102 	JP NZ, DONE
+0181              103 
+0181              104 
+0181              105 ; Loop through 128 characters, turn bare LF to CR/LF, end program at ^Z
+0181              106 
+0181 3e 80        107 	LD A, 128
+0183 32 ec 02     108 	LD (CHARCOUNT), A		; this many chars
+0186 21 f3 02     109 	LD HL, DMADDR			; Buffer to write
+0189              110 OUTLOOP:
+0189 7e           111 	LD A, (HL)			; Load a character
+018a 22 ed 02     112 	LD (DISPLAYPTR), HL
+018d dd 21 ef 02  113 	LD IX, LINECOUNT
+0191 fe 0a        114 	CP LF
+0193 28 18        115 	JR Z, CRLFCHECK
+0195              116 
+0195 fe 0d        117 	CP CR
+0197 20 06        118 	JR NZ, NOTCRLF
+0199 dd 36 01 51  119 	LD (IX+1),MAXCHAR		; Reset LINECHAR to 80 on CR
+019d 18 29        120 	JR NOADDCR
+019f              121 
+019f              122 NOTCRLF:
+019f dd 35 01     123 	DEC (IX+1)			; Count one character
+01a2 20 24        124 	JR NZ, NOADDCR			; If not zero, continue
+01a4              125 					; Otherwise, count a line
+01a4 dd 36 01 51  126 	LD (IX+1),MAXCHAR		; Reset LINECHAR to 80 on CR
+01a8 cd fd 01     127 	CALL NEXTLINE
+01ab              128 	
+01ab 18 1b        129 	JR NOADDCR
+01ad              130 
+01ad              131 CRLFCHECK:
+01ad              132 	
+01ad 3a eb 02     133 	LD A, (LASTCHAR)		; Load last char from last record
+01b0 fe 0d        134 	CP CR
+01b2 28 07        135 	JR Z, PRTLF
+01b4              136 
+01b4 cd 19 02     137 	CALL PRNT_CR			; If not, print one first
+01b7              138 	
+01b7 dd 36 01 51  139 	LD (IX+1),MAXCHAR
+01bb              140 
+01bb              141 PRTLF:
+01bb cd 25 02     142 	CALL PRNT_LF
+01be cd fd 01     143 	CALL NEXTLINE
+01c1 3e 0a        144 	LD A, LF			; restore LF
+01c3 32 eb 02     145 	LD (LASTCHAR), A		; Save character for next loop
+01c6 18 0d        146 	JR SKIPDISPLAY
+01c8              147 NOADDCR:
+01c8 fe 1a        148 	CP EOF				; if EOF, exit
+01ca 28 19        149 	JR Z, DONE
+01cc              150 
+01cc 32 eb 02     151 	LD (LASTCHAR), A		; Save character for next loop
+01cf 0e 02        152 	LD C, OUTCH
+01d1 5f           153 	LD E, A
+01d2 cd 05 00     154 	CALL BDOS			; Print character
+01d5              155 SKIPDISPLAY:
+01d5 2a ed 02     156 	LD HL, (DISPLAYPTR)
+01d8 23           157 	INC HL
+01d9 3a ec 02     158 	LD A, (CHARCOUNT)
+01dc 3d           159 	DEC A
+01dd 32 ec 02     160 	LD (CHARCOUNT), A
+01e0 20 a7        161 	JR NZ,OUTLOOP			; Loop until done with buffer
+01e2              162 	
+01e2              163 ;
+01e2 c3 75 01     164 	JP COPYLOOP
+01e5              165 
+01e5              166 ; Finished
+01e5              167 DONE:					; if here, probably got EOF, so stop
+01e5 c6 30        168 	ADD A,30h
+01e7 32 c3 02     169 	LD (MSG_EOFREAD1), A
+01ea 0e 09        170 	LD C, PRINT
+01ec 11 b4 02     171 	LD DE, MSG_EOFREAD
+01ef cd 05 00     172 	CALL BDOS
+01f2              173 
+01f2 0e 10        174 	LD C, CLOSE			; Close URL
+01f4 11 47 02     175 	LD DE, FCBURL
+01f7 cd 05 00     176 	CALL BDOS
+01fa              177 
+01fa c3 00 00     178 	JP EXIT	
+01fd              179 
+01fd              180 NEXTLINE:				; Sub, on input IX+0 = LINE counter, IX+1 = CHAR counter
+01fd dd 35 00     181 	DEC (IX+0)
+0200 20 16        182 	JR NZ, NOPAGINATE
+0202              183 
+0202 dd 36 00 17  184 	LD (IX+0),MAXLINE
+0206              185 	
+0206 f5           186 	PUSH AF
+0207 0e 09        187 	LD C, PRINT
+0209 11 d9 02     188 	LD DE, MSG_PAGINATE
+020c cd 05 00     189 	CALL BDOS
+020f              190 	
+020f 0e 01        191 	LD C,INCH
+0211 cd 05 00     192 	CALL BDOS
+0214              193 
+0214 cd 19 02     194 	CALL PRNT_CR
+0217              195 	
+0217 f1           196 	POP AF
+0218              197 
+0218              198 NOPAGINATE:
+0218 c9           199 	RET
+0219              200 
+0219              201 PRNT_CR:
+0219 dd e5        202 	PUSH IX
+021b 0e 02        203 	LD C, OUTCH
+021d 1e 0d        204 	LD E, CR
+021f cd 05 00     205 	CALL BDOS
+0222 dd e1        206 	POP IX
+0224 c9           207 	RET
+0225              208 
+0225              209 PRNT_LF:
+0225 dd e5        210 	PUSH IX
+0227 0e 02        211 	LD C, OUTCH
+0229 1e 0a        212 	LD E, LF
+022b cd 05 00     213 	CALL BDOS
+022e dd e1        214 	POP IX
+0230 c9           215 	RET
+0231              216 	
+0231              217 
+0231              218 ; print error message for opening URL file
+0231              219 ERRURLO:				
+0231 0e 09        220 	LD C, PRINT
+0233 11 7f 02     221 	LD DE, MSG_BADURLO
+0236 cd 05 00     222 	CALL BDOS
+0239 c3 00 00     223 	JP EXIT
+023c              224 
+023c              225 ; print error message for writing URL to file
+023c              226 ERRURLW:
+023c 0e 09        227 	LD C, PRINT			
+023e 11 9e 02     228 	LD DE, MSG_BADURLW
+0241 cd 05 00     229 	CALL BDOS
+0244 c3 00 00     230 	JP EXIT
+0247              231 	
+0247              232 
+0247              233 ; 36 byte FCB for B:LYNXGET.SYS
+0247              234 FCBURL:					
+0247 02           235 	defb 2 
+0248 4c 59 4e 58  236 	defm "LYNXGET SYS"
+0253 00 00 00 00  237 	defb 0, 0, 0, 0
+0257              238 	defs 20
+026b              239 
+026b              240 ; Messages follow
+026b              241 
+026b              242 MSG_WELCOME:
+026b 43 50 2f 4d  243 	defm "CP/M lynx program"
+027c 0d 0a 24     244 	defb CR, LF, 24h
+027f              245 
+027f              246 MSG_BADURLO:
+027f 43 6f 75 6c  247 	defm "Could not open B:LYNXGET.SYS"
+029b 0d 0a 24     248 	defb CR, LF, 24h
+029e              249 
+029e              250 MSG_BADURLW:
+029e 43 6f 75 6c  251 	defm "Could not write URL"
+02b1 0d 0a 24     252 	defb CR, LF, 24h
+02b4              253 
+02b4              254 MSG_EOFREAD:
+02b4 0d 0a        255 	defb CR, LF
+02b6 45 6e 64 20  256 	defm "End of file: "
+02c3              257 MSG_EOFREAD1:
+02c3 30 0d 0a 24  258 	defb '0' , CR, LF, 24h
+02c7              259 
+02c7              260 MSG_URLPROMPT:
+02c7 1b 47 34     261 	defb ESC, 'G', '4'
+02ca 45 6e 74 65  262 	defm "Enter URL: "
+02d5 1b 47 30 24  263 	defb ESC, 'G', '0', '$'
+02d9              264 
+02d9              265 MSG_PAGINATE:
+02d9 0d 1b 47 36  266 	defb CR, ESC, 'G', '6',
+02dd 5b 2d 2d 4d  267 	defm "[--MORE--]"
+02e7 1b 47 30 24  268 	defb ESC, 'G', '0', '$'
+02eb              269 
+02eb              270 ; Temp space to store last character
+02eb              271 
+02eb              272 LASTCHAR:
+02eb 00           273 	defb 0
+02ec              274 CHARCOUNT:
+02ec 00           275 	defb 0
+02ed              276 DISPLAYPTR:
+02ed 00 00        277 	defw 0
+02ef              278 LINECOUNT:
+02ef 17           279 	defb MAXLINE
+02f0              280 LINECHAR:
+02f0 51           281 	defb MAXCHAR
+02f1              282 
+02f1              283 ; CP/M input buffer for URL
+02f1              284 
+02f1              285 CBUFMX:
+02f1 ff           286 	defb 255
+02f2              287 CBUFSZ:
+02f2 00           288 	defb 0
+02f3              289 
+02f3              290 ; text part of input buffer & DMA buffer for reading/writing
+02f3              291 
+02f3              292 CBUFFER:				; Console bufer 
+02f3              293 DMADDR:					; ( == ) DMA read/write buffer
+02f3              294 	defs 128
+0373              295 CBUFFER2:
+0373              296 	defs 128
+03f3              297 
+03f3              298 ; User stack, lots of space
+03f3              299 STACKBOT:
+03f3              300 	defs 128
+0473              301 STACKTOP:
+479 bytes code generated and 55 labels defined

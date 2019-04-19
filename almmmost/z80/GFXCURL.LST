@@ -1,0 +1,290 @@
+0000                1 ; Z80 CP/M program to wget a URL to the screen - graphics mode - v2
+0000                2 
+0000                3 BDOS:	EQU 5
+0000                4 SETDMA:	EQU 26
+0000                5 INCH:	EQU 1
+0000                6 OUTCH:	EQU 2
+0000                7 PRINT:	EQU 9
+0000                8 GETCON:	EQU 10
+0000                9 OPEN:	EQU 15
+0000               10 MAKE:	EQU 22
+0000               11 DELETE:	EQU 19
+0000               12 READ:	EQU 20
+0000               13 WRITE:	EQU 21
+0000               14 CLOSE:	EQU 16
+0000               15 EXIT:	EQU 0
+0000               16 
+0000               17 GRFX:	EQU 28h
+0000               18 
+0000               19 CR:	EQU 0Dh
+0000               20 LF:	EQU 0Ah
+0000               21 EOF:	EQU 1Ah
+0000               22 
+0000               23 SAFERAM:  EQU 0C000h
+0000               24 BDOSBOT:  EQU 0CB80h
+0000               25 STACKTOP: EQU 0CB00h
+0000               26 
+0000               27 DMADDR:   EQU 0C100h
+0000               28 IMGOFFSET  EQU DMADDR-6		; Offset to start writing
+0000               29 GFXOFFSET: EQU DMADDR-4		; Multiplied RAM offset for line number
+0000               30 GFXRAM:   EQU 04000h
+0000               31 GFXRAMB0: EQU GFXRAM
+0000               32 GFXRAMB1: EQU GFXRAM+02000h
+0000               33 GFXRAMB2: EQU GFXRAM+04000h
+0000               34 GFXRAMB3: EQU GFXRAM+06000h
+0000               35 RECSIZE: EQU 80h
+0000               36 RECCHUNK: EQU 18
+0000               37 CHUNK1SZ: EQU RECSIZE*RECCHUNK
+0000               38 CHUNK2SZ: EQU RECSIZE*RECCHUNK-40h
+0000               39 GFXLINEBYTES: EQU 80			; 80 bytes per line * 8 = 640 px
+0000               40 GFXINTERLACE: EQU 4			; Interlace every 4 lines
+0000               41 GFXLINESPERFIELD: EQU 60		; 60 fields * 4 = 240 lines
+0000               42 
+0000               43 GFXPORT: EQU 0C4h
+0000               44 GFX_EN:	 EQU 5
+0000               45 GFX_DIS: EQU 0
+0000               46 
+0000               47 MEMPORT:      EQU 13h
+0000               48 MEM_VIDBANK:  EQU 0
+0000               49 MEM_NORMBANK: EQU 1
+0000               50 
+0000               51 
+0000               52 	ORG 100h
+0100               53 
+0100               54 START:
+0100 31 00 cb      55 	LD SP, STACKTOP			; Set user stack address
+0103               56 	
+0103 0e 09         57 	LD C, PRINT			; Print welcome message
+0105 11 1e 02      58 	LD DE, MSG_WELCOME
+0108 cd 05 00      59 	CALL BDOS
+010b               60 
+010b 0e 0f         61 	LD C, OPEN			; Open compiled-in name output file
+010d 11 fa 01      62 	LD DE, FCBURL
+0110 cd 05 00      63 	CALL BDOS
+0113               64 
+0113 3c            65 	INC A				; If A=FF, error opening output file
+0114 ca c1 01      66 	JP Z,ERRURLO
+0117               67 
+0117               68 ; Get URL from user
+0117 0e 09         69 	LD C, PRINT			; Prompt for URL
+0119 11 82 02      70 	LD DE, MSG_URLPROMPT
+011c cd 05 00      71 	CALL BDOS
+011f               72 
+011f 0e 0a         73 	LD C, GETCON
+0121 11 92 02      74 	LD DE, CBUFMX
+0124 cd 05 00      75 	CALL BDOS
+0127               76 
+0127 0e 02         77 	LD C, OUTCH			; Need a linefeed after the prompt
+0129 1e 0a         78 	LD E, LF
+012b cd 05 00      79 	CALL BDOS 
+012e               80 
+012e 21 94 02      81 	LD HL, CBUFFER			; Terminate buffer with EOF
+0131 06 00         82 	LD B, 0
+0133 3a 93 02      83 	LD A, (CBUFSZ)
+0136 4f            84 	LD C, A
+0137 09            85 	ADD HL, BC
+0138 36 1a         86 	LD (HL), EOF
+013a               87 
+013a               88 ; Send URL
+013a 0e 1a         89 	LD C, SETDMA			; Move DMA address buffer
+013c 11 94 02      90 	LD DE, CBUFFER
+013f cd 05 00      91 	CALL BDOS
+0142               92 
+0142 0e 15         93 	LD C, WRITE			; Write the URL to the host
+0144 11 fa 01      94 	LD DE, FCBURL
+0147 cd 05 00      95 	CALL BDOS
+014a               96 
+014a b7            97 	OR A				; Exit if error
+014b c2 cc 01      98 	JP NZ, ERRURLW
+014e               99 
+014e 3a 93 02     100 	LD A, (CBUFSZ)
+0151 fe 80        101 	CP 128
+0153 38 14        102 	JR C, SKIPREC2
+0155              103 
+0155 0e 1a        104 	LD C, SETDMA			; Move DMA address to send 2nd half of buffer
+0157 11 14 03     105 	LD DE, CBUFFER2
+015a cd 05 00     106 	CALL BDOS
+015d              107 
+015d 0e 15        108 	LD C, WRITE
+015f 11 fa 01     109 	LD DE, FCBURL
+0162 cd 05 00     110 	CALL BDOS
+0165              111 
+0165 b7           112 	OR A
+0166 c2 cc 01     113 	JP NZ, ERRURLW
+0169              114 
+0169              115 SKIPREC2:
+0169 af           116 	XOR A
+016a 32 1a 02     117 	LD (FCBURL+32), A		; Clear record number
+016d              118 
+016d              119 ; Init things
+016d 0e 01        120 	LD C,1				; Set graphics mode
+016f ef           121 	RST GRFX
+0170              122 
+0170 0e 02        123 	LD C,2				; Clear graphics screen
+0172 ef           124 	RST GRFX
+0173              125 
+0173              126 
+0173              127 ; Copy graphics routine to high ram
+0173              128 
+0173 21 d7 01     129 	LD HL, GFX_DISP
+0176 11 00 c0     130 	LD DE, SAFERAM
+0179 01 23 00     131 	LD BC, GFX_DISP_SIZE
+017c ed b0        132 	LDIR
+017e              133 
+017e              134 ; Copy from URL file to User
+017e              135 
+017e              136 ; Copy field A part 1-38
+017e 11 00 c1     137 	LD DE, DMADDR
+0181 0e 1a        138 	LD C, SETDMA
+0183 cd 05 00     139 	CALL BDOS
+0186              140 
+0186 0e 00        141 	LD C, 0				; Offset for current field
+0188              142 
+0188              143 COPYFIELD:
+0188 06 26        144 	LD B, 38
+018a              145 COPYREC:
+018a c5           146 	PUSH BC
+018b 0e 14        147 	LD C, READ
+018d 11 fa 01     148 	LD DE, FCBURL
+0190 cd 05 00     149 	CALL BDOS
+0193              150 
+0193 c1           151 	POP BC
+0194              152 	
+0194 b7           153 	OR A				; If error, assume EOF
+0195 c2 a6 01     154 	JP NZ, DONE
+0198              155 
+0198 c5           156 	PUSH BC
+0199              157 
+0199 cd 00 c0     158 	CALL SAFERAM			; Write to screen from DMADDR to C*128+GFXRAM - if B == 1, write 1/2 size
+019c              159 
+019c c1           160 	POP BC
+019d              161 
+019d 0c           162 	INC C
+019e 10 ea        163 	DJNZ COPYREC
+01a0              164 
+01a0 3e 1a        165 	LD A, 26			; Offset to skip at the end of each field
+01a2 81           166 	ADD A, C
+01a3 4f           167 	LD C, A
+01a4              168 
+01a4 20 e2        169 	JR NZ,COPYFIELD
+01a6              170 
+01a6              171 ; Finished
+01a6              172 DONE:					; if here, probably got EOF, so stop
+01a6              173 
+01a6 0e 01        174 	LD C, INCH
+01a8 cd 05 00     175 	CALL BDOS
+01ab              176 
+01ab 0e 00        177 	LD C, 0				; Reset to text mode
+01ad ef           178 	RST GRFX
+01ae              179 
+01ae 0e 09        180 	LD C, PRINT
+01b0 11 70 02     181 	LD DE, MSG_EOFREAD
+01b3 cd 05 00     182 	CALL BDOS
+01b6              183 
+01b6 0e 10        184 	LD C, CLOSE			; Close URL
+01b8 11 fa 01     185 	LD DE, FCBURL
+01bb cd 05 00     186 	CALL BDOS
+01be              187 
+01be c3 00 00     188 	JP EXIT	
+01c1              189 
+01c1              190 ; print error message for opening URL file
+01c1              191 ERRURLO:				
+01c1 0e 09        192 	LD C, PRINT
+01c3 11 3b 02     193 	LD DE, MSG_BADURLO
+01c6 cd 05 00     194 	CALL BDOS
+01c9 c3 00 00     195 	JP EXIT
+01cc              196 
+01cc              197 ; print error message for writing URL to file
+01cc              198 ERRURLW:
+01cc 0e 09        199 	LD C, PRINT			
+01ce 11 5a 02     200 	LD DE, MSG_BADURLW
+01d1 cd 05 00     201 	CALL BDOS
+01d4 c3 00 00     202 	JP EXIT
+01d7              203 
+01d7              204 
+01d7              205 ; Graphics routine, will be reloaced to SAFERAM, do PIC
+01d7              206 	; Write to screen from DMADDR to C*128+GFXRAM - if B == 1, write 1/2 record
+01d7              207 
+01d7              208 GFX_DISP:
+01d7              209 
+01d7 3e 00        210 	LD A, MEM_VIDBANK		; Set to Video memory bank
+01d9 d3 13        211 	OUT (MEMPORT), A
+01db              212 
+01db 21 00 40     213 	LD HL, GFXRAM
+01de 51           214 	LD D, C				; DE = C*256
+01df 1e 00        215 	LD E, 0
+01e1 cb 3a        216 	SRL D				; DE /= 2
+01e3 cb 1b        217 	RR E
+01e5 19           218 	ADD HL,DE
+01e6 eb           219 	EX DE,HL			; DE = HL
+01e7              220 
+01e7              221 
+01e7 05           222 	DEC B				; Test if (B-1) == 0 to chose write size
+01e8 01 80 00     223 	LD BC, 80h			; Full record size
+01eb 20 03        224 	JR NZ, FULLREC
+01ed 01 40 00     225 	LD BC, 40h			; Half record size
+01f0              226 
+01f0              227 FULLREC:
+01f0 21 00 c1     228 	LD HL, DMADDR			; Copy from DMAREC (HL) to GFXRAM+C*(80h) for BC bytes
+01f3 ed b0        229 	LDIR
+01f5              230 
+01f5 3e 01        231 	LD A, MEM_NORMBANK		; Reset to normal memory bank and return
+01f7 d3 13        232 	OUT (MEMPORT), A
+01f9 c9           233 	RET
+01fa              234 
+01fa              235 GFX_DISP_END:
+01fa              236 
+01fa              237 GFX_DISP_SIZE: EQU GFX_DISP_END-GFX_DISP
+01fa              238 
+01fa              239 ; 36 byte FCB for B:GFXCURL.SYS
+01fa              240 FCBURL:					
+01fa 02           241 	defb 2 
+01fb 55 52 4c 47  242 	defm "URLGET  SYS"
+0206 00 00 00 00  243 	defb 0, 0, 0, 0
+020a              244 	defs 20
+021e              245 
+021e              246 ; Messages follow
+021e              247 
+021e              248 MSG_WELCOME:
+021e 43 50 2f 4d  249 	defm "CP/M graphics curl program"
+0238 0d 0a 24     250 	defb CR, LF, 24h
+023b              251 
+023b              252 MSG_BADURLO:
+023b 43 6f 75 6c  253 	defm "Could not open B:GFXCURL.SYS"
+0257 0d 0a 24     254 	defb CR, LF, 24h
+025a              255 
+025a              256 MSG_BADURLW:
+025a 43 6f 75 6c  257 	defm "Could not write URL"
+026d 0d 0a 24     258 	defb CR, LF, 24h
+0270              259 
+0270              260 MSG_EOFREAD:
+0270 0d 0a        261 	defb CR, LF
+0272 45 6e 64 20  262 	defm "End of file. "
+027f 0d 0a 24     263 	defb CR, LF, 24h
+0282              264 
+0282              265 MSG_URLPROMPT:
+0282 45 6e 74 65  266 	defm "Enter URL: $"
+028e              267 
+028e              268 ; Temp space to store last character
+028e              269 
+028e              270 LASTCHAR:
+028e 00           271 	defb 0
+028f              272 CHARCOUNT:
+028f 00           273 	defb 0
+0290              274 DISPLAYPTR:
+0290 00 00        275 	defw 0
+0292              276 
+0292              277 ; CP/M input buffer for URL
+0292              278 
+0292              279 CBUFMX:
+0292 ff           280 	defb 255
+0293              281 CBUFSZ:
+0293 00           282 	defb 0
+0294              283 
+0294              284 ; text part of input buffer & DMA buffer for reading/writing
+0294              285 
+0294              286 CBUFFER:				; Console bufer 
+0294              287 	defs 128
+0314              288 CBUFFER2:
+0314              289 	defs 128
+384 bytes code generated and 65 labels defined

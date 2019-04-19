@@ -1,0 +1,41 @@
+; GFXTEST0 - Program for testing programming Mostek 6545 on TS-803/TPC-I
+;
+; For use with Almmmost. Almmmost is a modern replacement for the TeleVideo 
+; MmmOST network operating system used on the TeleVideo TS-8xx Zilog 
+; Z80-based computers from the early 1980s.
+;
+; Copyright (C) 2019 Patrick Finnegan <pat@vax11.net>
+;
+; This program is free software: you can redistribute it and/or modify
+; it under the terms of the GNU General Public License as published by
+; the Free Software Foundation, either version 3 of the License, or
+; (at your option) any later version.
+;
+; This program is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU General Public License for more details.
+;
+; You should have received a copy of the GNU General Public License
+; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+	ORG 100h
+
+START:
+	LD C, 0C0h
+	LD D, 4
+	LD HL, STUFF
+	LD B, 6
+
+LOOP:
+	OUT (C), D
+	INC D
+	LD A, (HL)
+	OUT (0C0h), A
+	INC HL
+	DJNZ LOOP
+
+	JP 0
+
+STUFF:
+	defb 42h, 02h, 3Ch, 3Eh, 20h, 03h

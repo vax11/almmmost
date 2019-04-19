@@ -1,0 +1,45 @@
+Command line for Almmmost is accessed via ^C (ctrl-C):
+
+quit
+exit
+	- both will exit the program after running sync
+
+sync
+	- Save all open files on public/shared drive to the image
+
+printfil[es]
+	- Print all open files on shared drive(s)
+
+printspe[cial]
+	- Print all special file names
+
+printdpb
+	- Print drive parameter blocks for all disk
+
+printhpb
+	- Print the Hardware Parameter list attached to OS images
+
+saveos <num> <destination>
+	- Saves the modified (OS+HPB+DPBs) OS image for machine type 
+	<num> to file <destination>
+
+closeport <num>
+	- Close all open files on port <num>
+
+fileout <file>
+	- Change file that FILEOUT.SYS handler writes to on host
+
+filein <file>
+	- Change file that FILEIN.SYS handler reads from
+
+repoen <DISK[:DIR]> <imagename>
+	- Re-open disk DISK: (directory # DIR on private drives)
+	using <imagename>. Located in image dir listed in .INI file
+	if path is not absolute.
+
+locate
+	- Print out what loop the code is in, waiting on a client
+
+abort
+	- Print out where we're waiting, and abort that command.
+	Useful if the client dies.
