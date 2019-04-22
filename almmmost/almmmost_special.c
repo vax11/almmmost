@@ -64,8 +64,8 @@ int alm_special_init() {
 
 	strcpy(fileinsys_name, "/root/filein.sys");
 	strcpy(fileoutsys_name, "/root/fileout.sys");
-	strcpy(imggetsys_url, "http://vax11.net/cgi-bin/tvi-image.pl");
-	strcpy(lynxgetsys_url, "http://vax11.net/cgi-bin/tvi-lynx.pl");
+	strcpy(imggetsys_url, "http://localhost/cgi-bin/tvi-image.pl");
+	strcpy(lynxgetsys_url, "http://localhost/cgi-bin/tvi-lynx.pl");
 	special_files = calloc(sizeof(struct special_file_t),1);
 	alm_special_add_sft(special_files, "chargen.sys", alm_special_chargen);
 	alm_special_add_sft(special_files, "multi.sys", alm_special_multisys);

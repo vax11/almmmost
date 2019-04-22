@@ -423,7 +423,7 @@ int alm_file_doread(int portnum, struct tvsp_file_request *freq, struct cpm_fcb_
 	// Convert fcb position to location in file -- rand vs seq
 	if (freq->bdosfunc == TVSP_FILE_READRAND) {
 		// If random, pull from r0-r2 in FCB
-		pos = (fcb->rrec[2] << 16) + (fcb->rrec[1] << 8) + fcb->rrec[0];
+		pos = (fcb->rrec[2] << 16) + get_zint16(&fcb->rrec[0]);
 	} else {
 		// Otherwise, use sequential location
 		pos = (fcb->s2 << 12) + (fcb->curext << 7) + fcb->currec; 
@@ -511,9 +511,6 @@ doread_retok:
 		fcb->curext = EXT_EXTL(pos);
 		fcb->s2 = EXT_S2(pos);
 		// Don't update rrec position
-		//fcb->rrec[0] = pos & 0xFF;
-		//fcb->rrec[1] = (pos >> 8) & 0xFF;
-		//fcb->rrec[2] = pos >> 16;
 	}
 	alm_file_blks2fcb(disk, extent, fcb);
 	resp->err = MMMERR_OK;
@@ -563,7 +560,7 @@ int alm_file_dowrite(int portnum, struct tvsp_file_request *freq, struct cpm_fcb
 	// Convert fcb position to location in file -- rand vs seq
 	if (freq->bdosfunc != TVSP_FILE_WRITESEQ) {
 		// If random, pull from r0-r2 in FCB
-		pos = (fcb->rrec[2] << 16) + (fcb->rrec[1] << 8) + fcb->rrec[0];
+		pos = (fcb->rrec[2] << 16) + get_zint16(&fcb->rrec[0]);
 	} else {
 		// Otherwise, use sequential location
 		pos = (fcb->s2 << 12) + (fcb->curext << 7) + fcb->currec; 
@@ -675,9 +672,6 @@ dowrite_retok:
 		fcb->curext = EXT_EXTL(pos);
 		fcb->s2 = EXT_S2(pos);
 		// Don't update rrec position
-		//fcb->rrec[0] = pos & 0xFF;
-		//fcb->rrec[1] = (pos >> 8) & 0xFF;
-		//fcb->rrec[2] = pos >> 16;
 	}
 	resp->err = MMMERR_OK;
 	resp->retcode = RETCODE_OK;
@@ -745,8 +739,7 @@ int alm_file_dogetsize(int portnum, struct tvsp_file_request *freq, struct cpm_f
 
 	// Set random record based on known size
 	size = fileinfo[fnum].size;
-	fcb->rrec[0] = size & 0xFF;
-	fcb->rrec[1] = (size >> 8) & 0xFF;
+	set_zint16(&fcb->rrec[0], size & 0xFFFF);
 	fcb->rrec[2] = size >> 16;
 
 	memcpy(resp->fileno, freq->filenum, 2);

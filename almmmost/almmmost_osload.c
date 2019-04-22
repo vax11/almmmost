@@ -216,13 +216,11 @@ int alm_osl_tailor_images() {
 		//printf("OS Type %d Header at 0x%x:", i, hpam_off);
 		if (buf) {
 			//printf("buffer allocated.\n");
-			buf[hpam_off+0] = bootinfo[i].conbuf & 0xFF;
-			buf[hpam_off+1] = bootinfo[i].conbuf >> 8;
+			set_zint16(buf+hpam_off+0, bootinfo[i].conbuf);
 			buf[hpam_off+2] = 0x69; /* Processor ID location */
 			buf[hpam_off+3] = mmm_spooldrv;
 			buf[hpam_off+4] = mmm_genrev;
-			buf[hpam_off+5] = mmm_pubdrv & 0xFF;
-			buf[hpam_off+6] = mmm_pubdrv >> 8;
+			set_zint16(buf+hpam_off+5, mmm_pubdrv);
 			buf[hpam_off+7] = mmm_numdisks;
 			alm_generate_drv_param_hdrs(i);
 		} else {
